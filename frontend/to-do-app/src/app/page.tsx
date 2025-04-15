@@ -1,103 +1,246 @@
-import Image from "next/image";
+// app/page.tsx
+'use client'; // This component needs client-side interactivity
 
-export default function Home() {
+import { useState, useEffect, FormEvent } from 'react';
+import { useAuth, UserButton, useUser } from "@clerk/nextjs";
+
+interface Todo {
+  _id: string;
+  text: string;
+  status: 'Pending' | 'In Progress' | 'Done';
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export default function HomePage() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [newTodoText, setNewTodoText] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { getToken } = useAuth(); // Hook to get the auth token
+  const { user } = useUser(); // Hook to get user info
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+  // --- Fetch Todos ---
+  const fetchTodos = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = await getToken(); // Get JWT token from Clerk
+      if (!token) {
+         throw new Error("Authentication token not available.");
+      }
+
+      const response = await fetch(`${API_URL}/todos`, {
+        headers: {
+          'Authorization': `Bearer ${token}`, // Send token to backend
+        },
+      });
+
+      if (!response.ok) {
+         const errorData = await response.json();
+         throw new Error(errorData.error || `Error fetching todos: ${response.statusText}`);
+      }
+      const data: Todo[] = await response.json();
+      setTodos(data);
+    } catch (err: any) {
+      console.error("Fetch error:", err);
+      setError(err.message || "Failed to fetch todos.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Add Todo ---
+  const handleAddTodo = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newTodoText.trim()) return;
+    setError(null);
+
+    try {
+       const token = await getToken();
+        if (!token) {
+         throw new Error("Authentication token not available.");
+        }
+
+      const response = await fetch(`${API_URL}/todos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: newTodoText }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error adding todo: ${response.statusText}`);
+      }
+
+      const newTodo: Todo = await response.json();
+      setTodos([newTodo, ...todos]); // Add to the top of the list
+      setNewTodoText(''); // Clear input field
+    } catch (err: any) {
+      console.error("Add error:", err);
+      setError(err.message || "Failed to add todo.");
+    }
+  };
+
+  // --- Update Todo Status ---
+  const handleUpdateStatus = async (id: string, newStatus: Todo['status']) => {
+     setError(null);
+     try {
+        const token = await getToken();
+         if (!token) {
+            throw new Error("Authentication token not available.");
+        }
+
+        const response = await fetch(`<span class="math-inline">\{API\_URL\}/todos/</span>{id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: newStatus }),
+        });
+
+         if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error updating todo: ${response.statusText}`);
+        }
+
+        const updatedTodo: Todo = await response.json();
+        // Update the todo in the local state
+        setTodos(todos.map(todo => (todo._id === id ? updatedTodo : todo)));
+
+     } catch(err: any) {
+         console.error("Update error:", err);
+         setError(err.message || "Failed to update todo status.");
+     }
+  };
+
+
+  // --- Delete Todo ---
+  const handleDeleteTodo = async (id: string) => {
+      setError(null);
+      if (!confirm("Are you sure you want to delete this todo?")) return; // Confirmation dialog
+
+      try {
+         const token = await getToken();
+         if (!token) {
+            throw new Error("Authentication token not available.");
+        }
+
+        const response = await fetch(`<span class="math-inline">\{API\_URL\}/todos/</span>{id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+
+         if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error deleting todo: ${response.statusText}`);
+        }
+
+        // Remove the todo from the local state
+        setTodos(todos.filter(todo => todo._id !== id));
+
+      } catch (err: any) {
+         console.error("Delete error:", err);
+         setError(err.message || "Failed to delete todo.");
+      }
+  };
+
+
+  // Fetch todos when the component mounts or user changes
+  useEffect(() => {
+    if (user) { // Only fetch if user is loaded
+        fetchTodos();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]); // Re-fetch if the user object changes (e.g., after login)
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="container mx-auto p-4 max-w-2xl">
+      <header className="flex justify-between items-center mb-6 pb-4 border-b">
+        <h1 className="text-3xl font-bold">My Todos</h1>
+        <UserButton afterSignOutUrl="/sign-in"/>
+      </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      {/* Add Todo Form */}
+      <form onSubmit={handleAddTodo} className="mb-6 flex gap-2">
+        <input
+          type="text"
+          value={newTodoText}
+          onChange={(e) => setNewTodoText(e.target.value)}
+          placeholder="Add a new todo..."
+          className="flex-grow p-2 border rounded shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          aria-label="New todo text"
+        />
+        <button
+          type="submit"
+          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded shadow-sm transition duration-150 ease-in-out"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Add Todo
+        </button>
+      </form>
+
+      {/* Loading State */}
+      {isLoading && <p className="text-center text-gray-500">Loading todos...</p>}
+
+      {/* Error Display */}
+       {error && <p className="text-center text-red-500 bg-red-100 p-3 rounded mb-4">{error}</p>}
+
+
+      {/* Todo List */}
+      {!isLoading && !error && (
+        <ul className="space-y-3">
+          {todos.length === 0 ? (
+             <p className="text-center text-gray-500">No todos yet. Add one above!</p>
+          ) : (
+            todos.map((todo) => (
+              <li
+                key={todo._id}
+                className={`p-4 rounded shadow-sm border flex justify-between items-center ${
+                  todo.status === 'Done' ? 'bg-green-100 border-green-200' : 'bg-white border-gray-200'
+                }`}
+              >
+                <span className={`flex-grow mr-4 ${todo.status === 'Done' ? 'line-through text-gray-500' : ''}`}>
+                   {todo.text}
+                </span>
+                 <div className="flex items-center gap-2 flex-shrink-0">
+                     {/* Status Dropdown/Buttons */}
+                    <select
+                        value={todo.status}
+                        onChange={(e) => handleUpdateStatus(todo._id, e.target.value as Todo['status'])}
+                        className={`p-1 border rounded text-sm ${
+                            todo.status === 'Done' ? 'bg-green-200 border-green-300' :
+                            todo.status === 'In Progress' ? 'bg-yellow-100 border-yellow-300' :
+                            'bg-gray-100 border-gray-300'
+                        }`}
+                        disabled={todo.status === 'Done'} // Optional: disable changing from "Done" via dropdown
+                    >
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Done">Done</option>
+                    </select>
+                    {/* Delete Button */}
+                    <button
+                        onClick={() => handleDeleteTodo(todo._id)}
+                        className="text-red-500 hover:text-red-700 text-sm font-medium px-2 py-1 rounded hover:bg-red-100 transition duration-150 ease-in-out"
+                        aria-label={`Delete todo: ${todo.text}`}
+                    >
+                        Delete
+                    </button>
+                 </div>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }
