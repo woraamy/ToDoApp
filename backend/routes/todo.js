@@ -3,6 +3,10 @@ const express = require('express');
 const Todo = require('../models/Todo');
 const router = express.Router();
 
+router.get('/amy', async (req, res, next) => {
+  console.log("hello")
+});
+
 // Get all todo list
 router.get('/', async (req, res, next) => {
   try {
@@ -43,32 +47,32 @@ router.post('/', async (req, res, next) => {
 });
 
 // Update todo status
-router.put('/:id', async (req, res, next) => {
+// In your todos routes file (e.g., routes/todos.js)
+router.put('/:id', async (req, res) => {
   try {
-    const userId = req.auth.userId;
-     if (!userId) {
-       return res.status(401).json({ error: 'User not authenticated' });
-    }
     const { id } = req.params;
-    const { status } = req.body; 
+    const { status } = req.body; // Or other fields you want to update
 
-    if (!status || !['Pending', 'In Progress', 'Done'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status provided.' });
-    }
+    // Add logic here to find the todo by id in your database
+    // and update its status (or other fields)
 
-    const updatedTodo = await Todo.findOneAndUpdate(
-      { _id: id, userId: userId }, 
-      { status: status },         
-      { new: true, runValidators: true } 
+    const updatedTodo = await Todo.findByIdAndUpdate(
+      id,
+      { status: status },
+      { new: true } // Option to return the updated document
     );
 
     if (!updatedTodo) {
-      return res.status(404).json({ error: 'Todo not found or user not authorized' });
+      return res.status(404).json({ error: 'Todo not found' });
     }
 
-    res.status(200).json(updatedTodo);
-  } catch (err) {
-     next(err);
+    // IMPORTANT: Send back JSON
+    res.json(updatedTodo);
+
+  } catch (error) {
+    console.error("Error updating todo:", error);
+    // IMPORTANT: Send back JSON error
+    res.status(500).json({ error: 'Failed to update todo' });
   }
 });
 

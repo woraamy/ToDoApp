@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const todoRoutes = require('./routes/todos');
+const todoRoutes = require('./routes/todo');
 const { ClerkExpressRequireAuth } = require('@clerk/clerk-sdk-node');
 
 const app = express();
