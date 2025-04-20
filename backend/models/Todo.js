@@ -1,10 +1,19 @@
 const mongoose = require('mongoose');
 
 const TodoSchema = new mongoose.Schema({
-  text: {
+  topic: {
     type: String,
     required: [true, 'Todo text is required'],
     trim: true,
+  },
+  description: {
+    type: String,
+    required: false,
+    trim: true,
+  },
+  listName: {
+    type: String,
+    require: false
   },
   status: {
     type: String,
