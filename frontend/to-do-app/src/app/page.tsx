@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, type FormEvent } from "react"
 import Image from "next/image";
 import axios , { type AxiosRequestConfig, type AxiosError, type InternalAxiosRequestConfig } from "axios";;
-// Import Clerk hooks and components
 import { useAuth, UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs"
 import { Trash2, Loader2, Plus, ListPlus, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
