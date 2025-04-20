@@ -1,11 +1,8 @@
 
 const express = require('express');
-const Todo = require('../models/Todo');
+const Todo = require('../models/Task');
 const router = express.Router();
 
-router.get('/amy', async (req, res, next) => {
-  console.log("hello")
-});
 
 // Get all todo list
 router.get('/', async (req, res, next) => {
