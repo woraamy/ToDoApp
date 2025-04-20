@@ -11,11 +11,10 @@ const listSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // Clerk User ID is a string
   userId: {
     type: String,
     required: true,
-    index: true, // Index for faster lookups by user
+    index: true,
   },
 });
 listSchema.index({ userId: 1, name: 1 }, { unique: true })

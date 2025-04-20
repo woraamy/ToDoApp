@@ -1,23 +1,18 @@
-// routes/tasks.js
 const express = require('express');
 const Task = require('../models/Task');
 const List = require('../models/List');
 const mongoose = require('mongoose');
 const router = express.Router();
 
-// Note: ClerkExpressRequireAuth is applied in server.js
-
-// Helper function to format task response
 const formatTaskResponse = (task) => {
     if (!task) return null;
-    // Handle populated or non-populated listId
     const listInfo = task.listId ? (task.listId.name !== undefined ? task.listId : null) : null;
     return {
         _id: task._id,
         topic: task.topic,
         description: task.description,
         createdAt: task.createdAt,
-        updatedAt: task.updatedAt, // Added by timestamps:true
+        updatedAt: task.updatedAt,
         status: task.status,
         userId: task.userId,
         listId: listInfo ? listInfo._id : null,
@@ -62,10 +57,11 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/tasks - Add a new task
+// POST /api/tasks - Add a new task
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.auth.userId;
-    const { topic, description, listId } = req.body;
+    const { topic, description, listId } = req.body; // listId can be ObjectId string, "No List", null, or ""
 
     if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
       return res.status(400).json({ error: 'Task topic is required' });
@@ -75,11 +71,12 @@ router.post('/', async (req, res, next) => {
     }
 
     let validListId = null;
-    if (listId) {
+
+    if (listId && listId !== "No List") {
         if (!mongoose.Types.ObjectId.isValid(listId)) {
              return res.status(400).json({ error: 'Invalid list ID format provided' });
         }
-        // Verify list exists and belongs to the user
+
         const list = await List.findOne({ _id: listId, userId: userId });
         if (!list) {
             return res.status(404).json({ error: 'List not found or does not belong to the user' });
@@ -91,14 +88,12 @@ router.post('/', async (req, res, next) => {
       topic: topic.trim(),
       description: description ? description.trim() : null,
       userId: userId,
-      listId: validListId,
-      // status defaults to 'To Do'
+      listId: validListId, 
     });
 
     const savedTask = await newTask.save();
-    const populatedTask = await Task.findById(savedTask._id).populate('listId', 'name'); // Populate for response
-
-    res.status(201).json(formatTaskResponse(populatedTask));
+    const populatedTask = await Task.findById(savedTask._id).populate('listId', 'name'); 
+    res.status(201).json(formatTaskResponse(populatedTask)); 
   } catch (err) {
     next(err);
   }

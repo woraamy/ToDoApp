@@ -1,11 +1,9 @@
-
 const express = require('express');
 const List = require('../models/List');
 const Task = require('../models/Task');
 const mongoose = require('mongoose'); 
 const router = express.Router();
 
-// Note: ClerkExpressRequireAuth is applied in server.js, so req.auth exists here
 
 // GET /api/lists - Get all lists for the authenticated user
 router.get('/', async (req, res, next) => {
@@ -56,7 +54,7 @@ router.put('/:id', async (req, res, next) => {
     }
 
     const updatedList = await List.findOneAndUpdate(
-      { _id: listId, userId: userId }, // Verify ownership
+      { _id: listId, userId: userId }, 
       { $set: { name: name.trim() } },
       { new: true, runValidators: true }
     );
@@ -81,14 +79,12 @@ router.delete('/:id', async (req, res, next) => {
         return res.status(400).json({ error: 'Invalid list ID format' });
     }
 
-    // 1. Verify ownership and delete the list
     const deletedList = await List.findOneAndDelete({ _id: listId, userId: userId });
 
     if (!deletedList) {
       return res.status(404).json({ error: 'List not found or user not authorized' });
     }
 
-    // 2. Update tasks associated with the deleted list
     await Task.updateMany(
       { userId: userId, listId: listId },
       { $set: { listId: null } }
