@@ -6,8 +6,8 @@ const { ClerkExpressRequireAuth } = require('@clerk/clerk-sdk-node'); // Import 
 
 require('dotenv').config();
 
-const listRoutes = require('./routes/lists');
-const taskRoutes = require('./routes/tasks');
+const listRoutes = require('./routes/list');
+const taskRoutes = require('./routes/task');
 
 const app = express();
 
@@ -57,13 +57,9 @@ app.use((err, req, res, next) => {
   const statusCode = err.statusCode || err.status || 500;
   const message = err.message || 'Internal Server Error';
 
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }), // Include stack trace in development
-  });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Ensure CLERK_SECRET_KEY and MONGODB_URI are set in your environment.`);

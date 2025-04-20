@@ -21,7 +21,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className={`${inter.className} flex flex-col min-h-screen`}> {/* Make body flex column */}
-          <Navbar /> {/* Add the Navbar here */}
+          {/* <Navbar /> Add the Navbar here */}
           <main className="flex-grow container mx-auto p-4"> {/* Add main tag for content, allow it to grow */}
             {children}
           </main>

@@ -1,459 +1,534 @@
+// src/app/page.tsx or where your main component lives
 "use client"
 
-import { useState, useEffect } from "react"
-import { Pencil, Trash2, ChevronDown } from "lucide-react"
+import { useState, useEffect, useCallback, type FormEvent } from "react"
+import axios , { type AxiosRequestConfig, type AxiosError, type InternalAxiosRequestConfig } from "axios";;
+// Import Clerk hooks and components
+import { useAuth, UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs"
+import { Pencil, Trash2, Loader2, Plus, ListPlus, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import TaskCard from "./TaskCard"
+import TaskCard from "./TaskCard" // Assuming you have this component
+import { type Status, type List, type Task } from "@/types";
 
-// Types
-type Status = "To Do" | "In Progress" | "Done"
-type Task = {
-  id: string
-  topic: string
-  description: string
-  createdAt: Date
-  listName: string | null
-  status: Status
-  imageUrl?: string
-}
+// API Base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5050/api";
 
-type List = {
-  id: string
-  name: string
-}
-
+// --- Component ---
 export default function TodoApp() {
+  // Clerk Auth Hook
+  const { getToken, isSignedIn, userId } = useAuth(); // Get token, signed-in status, and userId
+
   // State
   const [tasks, setTasks] = useState<Task[]>([])
-  const [lists, setLists] = useState<List[]>([
-    { id: "1", name: "Software Arch" },
-    { id: "2", name: "Mobile Dev" },
-  ])
-  const [selectedList, setSelectedList] = useState<string | null>(null)
+  const [lists, setLists] = useState<List[]>([])
+  const [selectedListId, setSelectedListId] = useState<string | null>(null) // null for 'All Tasks'
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false) // Start false until signed in
+  const [isLoadingLists, setIsLoadingLists] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Dialog states
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false)
   const [isAddListOpen, setIsAddListOpen] = useState(false)
   const [isEditTaskOpen, setIsEditTaskOpen] = useState(false)
   const [currentTask, setCurrentTask] = useState<Task | null>(null)
-  const [newTask, setNewTask] = useState({
-    topic: "",
-    description: "",
-    listName: "",
-  })
-  const [newList, setNewList] = useState({
-    name: "",
-  })
 
-  // Load initial data
+  // Form states
+  const [newTask, setNewTask] = useState({ topic: "", description: "", listId: "" })
+  const [newList, setNewList] = useState({ name: "" })
+
+  const apiClient = axios.create({ baseURL: API_BASE_URL });
+
+    // Use the imported types directly
+    apiClient.interceptors.request.use(
+        async (config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => { // Use InternalAxiosRequestConfig
+            const token: string | null = await getToken();
+            if (token) {
+                // Ensure headers object exists before assigning to it
+                config.headers = config.headers ?? {};
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+            return config;
+        },
+        (error: AxiosError): Promise<AxiosError> => { // Optionally type the error
+            // You might want to handle specific error types here
+            console.error("Axios request error:", error);
+            return Promise.reject(error);
+        }
+    );
+
+
+  // --- API Fetching Functions ---
+  const fetchLists = useCallback(async () => {
+    if (!isSignedIn) return; // Don't fetch if not signed in
+    setIsLoadingLists(true);
+    setError(null);
+    try {
+      const response = await apiClient.get('/lists');
+      setLists(response.data);
+    } catch (err: any) {
+      console.error("Failed to fetch lists:", err);
+      setError(err.response?.data?.error || "Failed to fetch lists.");
+    } finally {
+      setIsLoadingLists(false);
+    }
+  }, [isSignedIn, apiClient]); // Depend on isSignedIn and apiClient instance
+
+  const fetchTasks = useCallback(async (listIdToFetch: string | null = selectedListId) => {
+     if (!isSignedIn) return;
+    setIsLoadingTasks(true);
+    setError(null);
+    const params = new URLSearchParams();
+    if (listIdToFetch === '') { // Handle 'Tasks without list' explicitly
+        params.append('listId', 'null');
+    } else if (listIdToFetch) {
+        params.append('listId', listIdToFetch);
+    }
+    // If listIdToFetch is null, no parameter is added (fetches all tasks)
+
+    try {
+      const response = await apiClient.get('/tasks', { params });
+      setTasks(response.data);
+    } catch (err: any) {
+      console.error("Failed to fetch tasks:", err);
+      setError(err.response?.data?.error || "Failed to fetch tasks.");
+       setTasks([]); // Clear tasks on error
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [isSignedIn, selectedListId, apiClient]); // Depend on selectedListId
+
+  // --- Initial Data Load on Sign In ---
   useEffect(() => {
-    // Mock data - in a real app, this would come from an API or local storage
-    const initialTasks: Task[] = [
-      {
-        id: "1",
-        topic: "HW 1",
-        description: "Description Description DescriptionDescription Description Description",
-        createdAt: new Date("2025-05-12T12:23:00"),
-        listName: "Software Arch",
-        status: "To Do",
-      },
-      {
-        id: "2",
-        topic: "HW 2",
-        description: "Description Description DescriptionDescription Description Description",
-        createdAt: new Date("2025-05-12T12:23:00"),
-        listName: "Mobile Dev",
-        status: "In Progress",
-      },
-      {
-        id: "3",
-        topic: "HW 3",
-        description: "Description Description DescriptionDescription Description Description",
-        createdAt: new Date("2025-05-12T12:23:00"),
-        listName: "Mobile Dev",
-        status: "In Progress",
-      },
-      {
-        id: "4",
-        topic: "HW 1",
-        description: "Description Description DescriptionDescription Description Description",
-        createdAt: new Date("2025-05-12T12:23:00"),
-        listName: "Software Arch",
-        status: "Done",
-      },
-    ]
-    setTasks(initialTasks)
-  }, [])
-
-  // Handlers
-  const handleAddTask = () => {
-    if (!newTask.topic.trim()) return
-
-    const task: Task = {
-      id: Date.now().toString(),
-      topic: newTask.topic,
-      description: newTask.description,
-      createdAt: new Date(),
-      listName: newTask.listName || null,
-      status: "To Do",
+    if (isSignedIn) {
+      console.log("User signed in, fetching data...");
+      fetchLists();
+      fetchTasks(selectedListId); // Fetch based on current selection
+    } else {
+      // Clear data if user signs out
+      setTasks([]);
+      setLists([]);
+      setSelectedListId(null);
+      setError(null);
+      console.log("User signed out, clearing data.");
     }
+  }, [isSignedIn, fetchLists, fetchTasks]); // Trigger when sign-in status changes
 
-    setTasks([...tasks, task])
-    setNewTask({ topic: "", description: "", listName: "" })
-    setIsAddTaskOpen(false)
-  }
 
-  const handleAddList = () => {
-    if (!newList.name.trim()) return
-
-    const list: List = {
-      id: Date.now().toString(),
-      name: newList.name,
+  // --- Handlers (using apiClient with built-in auth) ---
+  const handleAddTask = async () => {
+    if (!newTask.topic.trim()) { alert("Task topic is required."); return; }
+    setError(null);
+    try {
+      const response = await apiClient.post('/tasks', {
+        topic: newTask.topic.trim(),
+        description: newTask.description.trim() || null,
+        listId: newTask.listId || null,
+      });
+      // Add task optimistically or based on response
+      setTasks(prevTasks => [response.data, ...prevTasks].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())); // Keep sorted
+      setNewTask({ topic: "", description: "", listId: "" });
+      setIsAddTaskOpen(false);
+    } catch (err: any) {
+      console.error("Failed to add task:", err);
+      setError(err.response?.data?.error || "Failed to add task.");
     }
+  };
 
-    setLists([...lists, list])
-    setNewList({ name: "" })
-    setIsAddListOpen(false)
-  }
+  const handleAddList = async () => {
+    if (!newList.name.trim()) { alert("List name is required."); return; }
+     setError(null);
+    try {
+      const response = await apiClient.post('/lists', { name: newList.name.trim() });
+      setLists(prevLists => [...prevLists, response.data].sort((a,b) => a.name.localeCompare(b.name))); // Keep sorted
+      setNewList({ name: "" });
+      setIsAddListOpen(false);
+    } catch (err: any) {
+      console.error("Failed to add list:", err);
+      setError(err.response?.data?.error || "Failed to add list.");
+    }
+  };
 
-  const handleDeleteTask = (id: string) => {
-    setTasks(tasks.filter((task) => task.id !== id))
-  }
+  const handleDeleteTask = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
+     setError(null);
+    try {
+      await apiClient.delete(`/tasks/${id}`);
+      setTasks(tasks.filter((task) => task._id !== id));
+    } catch (err: any) {
+      console.error("Failed to delete task:", err);
+      setError(err.response?.data?.error || "Failed to delete task.");
+    }
+  };
 
-  const handleDeleteList = (listName: string) => {
-    setLists(lists.filter((list) => list.name !== listName))
-    // Also update tasks that were in this list
-    setTasks(tasks.map((task) => (task.listName === listName ? { ...task, listName: null } : task)))
-  }
+  const handleDeleteList = async (listId: string) => {
+    const listToDelete = lists.find(l => l._id === listId);
+    if (!listToDelete || !window.confirm(`Delete list "${listToDelete.name}"? Tasks will be unassigned.`)) return;
+     setError(null);
+    try {
+      await apiClient.delete(`/lists/${listId}`);
+      // Remove list from state
+      setLists(lists.filter((list) => list._id !== listId));
+      // Update tasks locally that were in this list
+      setTasks(tasks.map((task) => (task.listId === listId ? { ...task, listId: null, listName: null } : task)));
+      // If the deleted list was selected, switch back to 'All Tasks'
+      if (selectedListId === listId) {
+        setSelectedListId(null);
+        // Refetch tasks for 'All Tasks' view might be needed if local update isn't sufficient
+        // await fetchTasks(null);
+      }
+    } catch (err: any) {
+      console.error("Failed to delete list:", err);
+      setError(err.response?.data?.error || "Failed to delete list.");
+    }
+  };
 
-  const handleEditTask = () => {
-    if (!currentTask || !currentTask.topic.trim()) return
+  const handleEditTask = async () => {
+    if (!currentTask || !currentTask.topic.trim()) { alert("Task topic cannot be empty."); return; }
+     setError(null);
+    try {
+       const response = await apiClient.put(`/tasks/${currentTask._id}`, {
+        topic: currentTask.topic.trim(),
+        description: currentTask.description?.trim() || null,
+        listId: currentTask.listId || null,
+        status: currentTask.status,
+      });
+      setTasks(tasks.map((task) => (task._id === currentTask._id ? response.data : task)));
+      setCurrentTask(null);
+      setIsEditTaskOpen(false);
+    } catch (err: any) {
+      console.error("Failed to edit task:", err);
+      setError(err.response?.data?.error || "Failed to edit task.");
+    }
+  };
 
-    setTasks(tasks.map((task) => (task.id === currentTask.id ? currentTask : task)))
+  const handleChangeStatus = async (taskId: string, newStatus: Status) => {
+    const originalTasks = [...tasks]; // For rollback
+    // Optimistic Update
+    setTasks(tasks.map((task) => (task._id === taskId ? { ...task, status: newStatus } : task)));
+    setError(null);
+    try {
+      await apiClient.patch(`/tasks/${taskId}/status`, { status: newStatus });
+      // If successful, state is already updated optimistically
+    } catch (err: any) {
+      console.error("Failed to change status:", err);
+      setError(err.response?.data?.error || "Failed to change task status.");
+      setTasks(originalTasks); // Rollback on error
+    }
+  };
 
-    setCurrentTask(null)
-    setIsEditTaskOpen(false)
-  }
 
-  const handleChangeStatus = (taskId: string, newStatus: Status) => {
-    setTasks(tasks.map((task) => (task.id === taskId ? { ...task, status: newStatus } : task)))
-  }
-
-  const filteredTasks = selectedList ? tasks.filter((task) => task.listName === selectedList) : tasks
-
-  const formatDate = (date: Date) => {
-    return `${date.getHours()}:${date.getMinutes().toString().padStart(2, "0")} ${date.getHours() >= 12 ? "PM" : "AM"} ${date.getDate()}/${date.toLocaleString("default", { month: "short" })}/${date.getFullYear()}`
-  }
-
-  const getStatusColor = (status: Status) => {
+  const formatDate = (date: Date): string => {
+    if (!date || isNaN(date.getTime())) return "Invalid Date"; // Check if date is valid
+    try {
+      // Use the Date object directly
+      return date.toLocaleString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          day: 'numeric',
+          month: 'short',
+          // year: 'numeric' // Optional: include year if needed
+      });
+    } catch (e) {
+        console.error("Date formatting error:", e);
+        return "Invalid Date";
+    }
+};
+  const getStatusColumnColor = (status: Status) => { /* ... keep implementation ... */
     switch (status) {
-      case "To Do":
-        return "bg-amber-50"
-      case "In Progress":
-        return "bg-blue-50"
-      case "Done":
-        return "bg-green-50"
-      default:
-        return "bg-gray-50"
+      case "To Do": return "bg-amber-50/80 border-amber-200";
+      case "In Progress": return "bg-blue-50/80 border-blue-200";
+      case "Done": return "bg-green-50/80 border-green-200";
+      default: return "bg-gray-50/80 border-gray-200";
     }
-  }
-
-  const getStatusBadgeColor = (status: Status) => {
+  };
+  const getStatusBadgeColor = (status: Status) => { /* ... keep implementation ... */
     switch (status) {
-      case "To Do":
-        return "bg-amber-100 text-amber-800"
-      case "In Progress":
-        return "bg-blue-100 text-blue-800"
-      case "Done":
-        return "bg-green-100 text-green-800"
-      default:
-        return "bg-gray-100"
+      case "To Do": return "bg-amber-100 text-amber-800 border border-amber-300";
+      case "In Progress": return "bg-blue-100 text-blue-800 border border-blue-300";
+      case "Done": return "bg-green-100 text-green-800 border border-green-300";
+      default: return "bg-gray-100 text-gray-800 border border-gray-300";
     }
-  }
+  };
+
+  // --- Render Logic ---
+  const currentListName = selectedListId
+    ? lists.find(l => l._id === selectedListId)?.name ?? "List Tasks"
+    : "All Tasks";
+
 
   return (
-    <div className="flex flex-col h-screen">
+    // Apply base font and background
+    <div className="flex flex-col h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 font-sans">
       {/* Header */}
-      <header className="bg-pink-100 p-4 flex items-center">
-        <div className="w-8 h-8 mr-2">
-          <img src="/placeholder.svg?height=32&width=32" alt="Hello Kitty Logo" className="w-full h-full" />
+      <header className="bg-white/80 backdrop-blur-sm shadow-sm p-4 flex items-center justify-between border-b border-gray-200 sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+           {/* Replace with your logo/icon */}
+           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-pink-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+           </svg>
+           <h1 className="text-2xl font-bold text-gray-800 font-serif tracking-tight">My Task Manager</h1>
         </div>
-        <h1 className="text-2xl font-bold">To Do List</h1>
+         {/* Display Error Messages Globally */}
+        {error && <Badge variant="destructive" className="mx-auto">{error}</Badge>}
+        <div>
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+          </SignedIn>
+          <SignedOut>
+            <SignInButton mode="modal">
+              <Button variant="outline">
+                <LogIn className="mr-2 h-4 w-4"/> Sign In
+              </Button>
+            </SignInButton>
+          </SignedOut>
+        </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-64 border-r p-4 flex flex-col">
-          <h2 className="text-xl font-semibold mb-2">You List(s)</h2>
+       {/* Content Area: Show based on SignedIn status */}
+       <SignedIn>
+            <div className="flex flex-1 overflow-hidden">
+                {/* Sidebar */}
+                <aside className="w-64 border-r border-gray-200 bg-white/60 backdrop-blur-sm p-4 flex flex-col space-y-4">
+                <h2 className="text-lg font-semibold text-gray-700 font-mono uppercase tracking-wider">Task Lists</h2>
+                {isLoadingLists ? (
+                    <div className="flex items-center justify-center text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading Lists...</div>
+                ) : (
+                    <>
+                     <Button variant="outline" className="w-full justify-start bg-pink-50 hover:bg-pink-100 border-pink-200 text-pink-700" onClick={() => {setIsAddListOpen(true); setError(null);}}>
+                        <ListPlus className="mr-2 h-4 w-4" /> Add New List
+                     </Button>
+                        <nav className="flex-1 overflow-y-auto space-y-1 pr-1">
+                            {/* "All Tasks" Button */}
+                            <button
+                                className={cn(
+                                    "w-full text-left p-2 rounded-md transition-colors duration-150 ease-in-out text-gray-700 flex items-center group",
+                                    selectedListId === null ? "bg-gradient-to-r from-pink-100 to-purple-100 text-purple-800 font-semibold shadow-sm" : "hover:bg-gray-100",
+                                )}
+                                onClick={() => { setSelectedListId(null); fetchTasks(null); }}
+                            >
+                                <span className="flex-1">All Tasks</span>
+                            </button>
+                            {/* Optional: Add "Tasks without list" filter */}
+                            <button
+                                className={cn(
+                                    "w-full text-left p-2 rounded-md transition-colors duration-150 ease-in-out text-gray-700 flex items-center group",
+                                    selectedListId === '' ? "bg-gradient-to-r from-pink-100 to-purple-100 text-purple-800 font-semibold shadow-sm" : "hover:bg-gray-100",
+                                )}
+                                onClick={() => { setSelectedListId(''); fetchTasks(''); }} // Use empty string for "no list" filter
+                            >
+                                <span className="flex-1">Tasks without list</span>
+                            </button>
 
-          <Button
-            variant="outline"
-            className="mb-4 bg-gray-200 hover:bg-gray-300"
-            onClick={() => setIsAddListOpen(true)}
-          >
-            Add new list
-          </Button>
+                            <div className="border-t my-2 border-gray-200"></div>
+                            {/* Lists */}
+                            {lists.length > 0 && lists.map((list) => (
+                                <div key={list._id} className="flex items-center group relative">
+                                    <button
+                                        className={cn( "flex-1 text-left p-2 rounded-md transition-colors duration-150 ease-in-out text-gray-600", selectedListId === list._id ? "bg-gradient-to-r from-pink-100 to-purple-100 text-purple-800 font-semibold shadow-sm" : "hover:bg-gray-100")}
+                                        onClick={() => { setSelectedListId(list._id); fetchTasks(list._id); }}
+                                    >
+                                    {list.name}
+                                    </button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 absolute right-1 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 hover:bg-red-100" onClick={(e) => { e.stopPropagation(); handleDeleteList(list._id); }}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                            {lists.length === 0 && <p className="text-sm text-gray-500 px-2">No lists yet.</p>}
+                        </nav>
+                    </>
+                )}
+                </aside>
 
-          <div className="space-y-2">
-            <button
-              className={cn(
-                "w-full text-left p-2 rounded-md transition-colors",
-                selectedList === null ? "bg-pink-200" : "hover:bg-gray-100",
-              )}
-              onClick={() => setSelectedList(null)}
-            >
-              All Tasks
-            </button>
+                {/* Main Task Area */}
+                <main className="flex-1 overflow-auto p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-semibold text-gray-800">{currentListName}</h2>
+                        <Button className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white shadow hover:shadow-md transition-all duration-150" onClick={() => {setIsAddTaskOpen(true); setError(null);}}>
+                        <Plus className="mr-2 h-4 w-4" /> Add New Task
+                        </Button>
+                    </div>
 
-            <div className="border-t my-2"></div>
+                    {isLoadingTasks && (
+                        <div className="flex items-center justify-center h-64 text-gray-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading tasks...</div>
+                    )}
 
-            {lists.map((list) => (
-              <div key={list.id} className="flex items-center group">
-                <button
-                  className={cn(
-                    "flex-1 text-left p-2 rounded-md transition-colors",
-                    selectedList === list.name ? "bg-pink-200" : "hover:bg-gray-100",
-                  )}
-                  onClick={() => setSelectedList(list.name)}
-                >
-                  {list.name}
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => handleDeleteList(list.name)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto">
-          <div className="p-4 flex justify-between items-center">
-            <h2 className="text-xl font-semibold">All Tasks</h2>
-            <Button className="bg-gray-200 hover:bg-gray-300 text-black" onClick={() => setIsAddTaskOpen(true)}>
-              Add New Task
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-            {/* To Do Column */}
-            <div className={cn("rounded-lg p-4", getStatusColor("To Do"))}>
-              <h3 className="text-xl font-semibold text-center mb-4">To Do</h3>
-              <div className="space-y-4">
-                {filteredTasks
-                  .filter((task) => task.status === "To Do")
-                  .map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onDelete={handleDeleteTask}
-                      onEdit={() => {
-                        setCurrentTask(task)
-                        setIsEditTaskOpen(true)
-                      }}
-                      onChangeStatus={handleChangeStatus}
-                      formatDate={formatDate}
-                      getStatusBadgeColor={getStatusBadgeColor}
-                    />
-                  ))}
-              </div>
+                    {!isLoadingTasks && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* To Do Column */}
+                                <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("To Do"))}>
+                                    {/* ... heading ... */}
+                                    <div className="space-y-4">
+                                        {tasks.filter(t => t.status === "To Do").map(task =>
+                                            <TaskCard
+                                                key={task._id}
+                                                task={task} // Pass the task object (now with Date objects)
+                                                onDelete={handleDeleteTask}
+                                                onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                                onChangeStatus={handleChangeStatus}
+                                                formatDate={formatDate} // Pass the correct formatDate function
+                                                getStatusBadgeColor={getStatusBadgeColor}
+                                            />
+                                        )}
+                                        {tasks.filter(t => t.status === "To Do").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
+                                    </div>
+                                </div>
+                                {/* In Progress Column */}
+                                <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("In Progress"))}>
+                                    {/* ... heading ... */}
+                                    <div className="space-y-4">
+                                        {tasks.filter(t => t.status === "In Progress").map(task =>
+                                            <TaskCard
+                                                key={task._id}
+                                                task={task} // Pass the task object
+                                                onDelete={handleDeleteTask}
+                                                onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                                onChangeStatus={handleChangeStatus}
+                                                formatDate={formatDate} // Pass the correct formatDate function
+                                                getStatusBadgeColor={getStatusBadgeColor}
+                                            />
+                                        )}
+                                        {tasks.filter(t => t.status === "In Progress").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
+                                    </div>
+                                </div>
+                                {/* Done Column */}
+                                <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("Done"))}>
+                                    {/* ... heading ... */}
+                                    <div className="space-y-4">
+                                        {tasks.filter(t => t.status === "Done").map(task =>
+                                            <TaskCard
+                                                key={task._id}
+                                                task={task} // Pass the task object
+                                                onDelete={handleDeleteTask}
+                                                onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                                onChangeStatus={handleChangeStatus}
+                                                formatDate={formatDate} // Pass the correct formatDate function
+                                                getStatusBadgeColor={getStatusBadgeColor}
+                                            />
+                                        )}
+                                        {tasks.filter(t => t.status === "Done").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
+                                    </div>
+                                </div>
+                            </div>
+                    )}
+                     {!isLoadingTasks && tasks.length === 0 && (
+                        <div className="text-center text-gray-500 mt-10">
+                            <p>No tasks found{selectedListId === null ? "" : ` in "${currentListName}"`}.</p>
+                            <Button variant="link" onClick={() => {setIsAddTaskOpen(true); setError(null);}}>Add your first task!</Button>
+                        </div>
+                     )}
+                </main>
             </div>
+        </SignedIn>
 
-            {/* In Progress Column */}
-            <div className={cn("rounded-lg p-4", getStatusColor("In Progress"))}>
-              <h3 className="text-xl font-semibold text-center mb-4">In Progress</h3>
-              <div className="space-y-4">
-                {filteredTasks
-                  .filter((task) => task.status === "In Progress")
-                  .map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onDelete={handleDeleteTask}
-                      onEdit={() => {
-                        setCurrentTask(task)
-                        setIsEditTaskOpen(true)
-                      }}
-                      onChangeStatus={handleChangeStatus}
-                      formatDate={formatDate}
-                      getStatusBadgeColor={getStatusBadgeColor}
-                    />
-                  ))}
-              </div>
+        {/* Show Sign in prompt when signed out */}
+        <SignedOut>
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Welcome to your Task Manager!</h2>
+                <p className="text-gray-500 mb-6">Please sign in to manage your tasks and lists.</p>
+                <SignInButton mode="modal">
+                    <Button size="lg" className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white shadow hover:shadow-md">
+                        <LogIn className="mr-2 h-5 w-5"/> Sign In
+                    </Button>
+                </SignInButton>
             </div>
+        </SignedOut>
 
-            {/* Done Column */}
-            <div className={cn("rounded-lg p-4", getStatusColor("Done"))}>
-              <h3 className="text-xl font-semibold text-center mb-4">Done</h3>
-              <div className="space-y-4">
-                {filteredTasks
-                  .filter((task) => task.status === "Done")
-                  .map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onDelete={handleDeleteTask}
-                      onEdit={() => {
-                        setCurrentTask(task)
-                        setIsEditTaskOpen(true)
-                      }}
-                      onChangeStatus={handleChangeStatus}
-                      formatDate={formatDate}
-                      getStatusBadgeColor={getStatusBadgeColor}
-                    />
-                  ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
+      {/* --- Dialogs --- (Keep structure from previous response, ensure they clear errors on open/close) */}
       {/* Add Task Dialog */}
-      <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Task</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="topic">Topic *</Label>
-              <Input
-                id="topic"
-                value={newTask.topic}
-                onChange={(e) => setNewTask({ ...newTask, topic: e.target.value })}
-                placeholder="Enter task topic"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={newTask.description}
-                onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                placeholder="Enter task description"
-                rows={4}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="list">List</Label>
-              <Select value={newTask.listName} onValueChange={(value) => setNewTask({ ...newTask, listName: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a list" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lists.map((list) => (
-                    <SelectItem key={list.id} value={list.name}>
-                      {list.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsAddTaskOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddTask}>Add Task</Button>
-            </div>
+      <Dialog open={isAddTaskOpen} onOpenChange={(isOpen) => { setIsAddTaskOpen(isOpen); if (!isOpen) setError(null); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader><DialogTitle>Add New Task</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-4">
+             {/* Topic */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="topic" className="text-right">Topic *</Label>
+                <Input id="topic" value={newTask.topic} onChange={(e) => setNewTask({ ...newTask, topic: e.target.value })} placeholder="What needs to be done?" className="col-span-3" required/>
+              </div>
+              {/* Description */}
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="description" className="text-right pt-2">Description</Label>
+                <Textarea id="description" value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} placeholder="Add more details (optional)" className="col-span-3 min-h-[80px]" rows={3}/>
+              </div>
+              {/* List */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="list" className="text-right">List</Label>
+                <Select value={newTask.listId} onValueChange={(value) => setNewTask({ ...newTask, listId: value })}>
+                    <SelectTrigger className="col-span-3"><SelectValue placeholder="Assign to a list (optional)" /></SelectTrigger>
+                    <SelectContent>
+                       <SelectItem value=" ">- No List -</SelectItem>
+                       {lists.map((list) => <SelectItem key={list._id} value={list._id}>{list.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+              </div>
           </div>
+          <DialogFooter>
+            {error && <p className="text-sm text-red-600 mr-auto">{error}</p>}
+            <DialogClose asChild><Button variant="outline" onClick={() => setError(null)}>Cancel</Button></DialogClose>
+            <Button onClick={handleAddTask} className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white">Add Task</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Add List Dialog */}
-      <Dialog open={isAddListOpen} onOpenChange={setIsAddListOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New List</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="listName">List Name *</Label>
-              <Input
-                id="listName"
-                value={newList.name}
-                onChange={(e) => setNewList({ ...newList, name: e.target.value })}
-                placeholder="Enter list name"
-                required
-              />
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsAddListOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddList}>Add List</Button>
-            </div>
+       <Dialog open={isAddListOpen} onOpenChange={(isOpen) => { setIsAddListOpen(isOpen); if (!isOpen) setError(null); }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader><DialogTitle>Add New List</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-4">
+             <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="listName" className="text-right">Name *</Label>
+                <Input id="listName" value={newList.name} onChange={(e) => setNewList({ ...newList, name: e.target.value })} placeholder="e.g., Work, Personal" className="col-span-3" required/>
+             </div>
           </div>
+           <DialogFooter>
+             {error && <p className="text-sm text-red-600 mr-auto">{error}</p>}
+            <DialogClose asChild><Button variant="outline" onClick={() => setError(null)}>Cancel</Button></DialogClose>
+            <Button onClick={handleAddList} className="bg-pink-500 hover:bg-pink-600 text-white">Add List</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Task Dialog */}
-      <Dialog open={isEditTaskOpen} onOpenChange={setIsEditTaskOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
+       <Dialog open={isEditTaskOpen} onOpenChange={(isOpen) => { setIsEditTaskOpen(isOpen); if (!isOpen) {setCurrentTask(null); setError(null);} }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader><DialogTitle>Edit Task</DialogTitle></DialogHeader>
           {currentTask && (
-            <div className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-topic">Topic *</Label>
-                <Input
-                  id="edit-topic"
-                  value={currentTask.topic}
-                  onChange={(e) => setCurrentTask({ ...currentTask, topic: e.target.value })}
-                  placeholder="Enter task topic"
-                  required
-                />
+            <div className="grid gap-4 py-4">
+                 {/* Topic */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-topic" className="text-right">Topic *</Label>
+                <Input id="edit-topic" value={currentTask.topic} onChange={(e) => setCurrentTask({ ...currentTask, topic: e.target.value })} placeholder="What needs to be done?" className="col-span-3" required/>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={currentTask.description}
-                  onChange={(e) => setCurrentTask({ ...currentTask, description: e.target.value })}
-                  placeholder="Enter task description"
-                  rows={4}
-                />
+              {/* Description */}
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="edit-description" className="text-right pt-2">Description</Label>
+                <Textarea id="edit-description" value={currentTask.description ?? ""} onChange={(e) => setCurrentTask({ ...currentTask, description: e.target.value || null })} placeholder="Add more details (optional)" className="col-span-3 min-h-[80px]" rows={3}/>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-list">List</Label>
-                <Select
-                  value={currentTask.listName || ""}
-                  onValueChange={(value) => setCurrentTask({ ...currentTask, listName: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a list" />
-                  </SelectTrigger>
+               {/* List */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-list" className="text-right">List</Label>
+                <Select value={currentTask.listId ?? ""} onValueChange={(value) => setCurrentTask({ ...currentTask, listId: value || null })}>
+                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Assign to a list (optional)" /></SelectTrigger>
                   <SelectContent>
-                    {lists.map((list) => (
-                      <SelectItem key={list.id} value={list.name}>
-                        {list.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="">- No List -</SelectItem>
+                    {lists.map((list) => <SelectItem key={list._id} value={list._id}>{list.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select
-                  value={currentTask.status}
-                  onValueChange={(value: Status) => setCurrentTask({ ...currentTask, status: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+              {/* Status */}
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-status" className="text-right">Status</Label>
+                <Select value={currentTask.status} onValueChange={(value: Status) => setCurrentTask({ ...currentTask, status: value })}>
+                  <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="To Do">To Do</SelectItem>
                     <SelectItem value="In Progress">In Progress</SelectItem>
@@ -461,16 +536,16 @@ export default function TodoApp() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => setIsEditTaskOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleEditTask}>Save Changes</Button>
-              </div>
             </div>
           )}
+          <DialogFooter>
+             {error && <p className="text-sm text-red-600 mr-auto">{error}</p>}
+             <DialogClose asChild><Button variant="outline" onClick={() => setError(null)}>Cancel</Button></DialogClose>
+            <Button onClick={handleEditTask} className="bg-purple-500 hover:bg-purple-600 text-white">Save Changes</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   )
 }
