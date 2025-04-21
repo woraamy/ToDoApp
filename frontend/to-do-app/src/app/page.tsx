@@ -61,21 +61,21 @@ export default function TodoApp() {
     return client;
   }, [getToken]);
 
-      const fetchLists = useCallback(async () => {
-        if (!isSignedIn) return; 
-        console.log("CALLBACK: fetchLists running");
-        setIsLoadingLists(true);
-        setError(null);
-        try {
-            const response = await apiClient.get<List[]>('/lists');
-            setLists(response.data);
-        } catch (err: any) {
-            console.error("Failed to fetch lists:", err);
-            const errorMsg = axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : "Failed to fetch lists.";
-            setError(errorMsg);
-        } finally {
-            setIsLoadingLists(false);
-        }
+    const fetchLists = useCallback(async () => {
+      if (!isSignedIn) return; 
+      console.log("CALLBACK: fetchLists running");
+      setIsLoadingLists(true);
+      setError(null);
+      try {
+          const response = await apiClient.get<List[]>('/lists');
+          setLists(response.data);
+      } catch (err: any) {
+          console.error("Failed to fetch lists:", err);
+          const errorMsg = axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : "Failed to fetch lists.";
+          setError(errorMsg);
+      } finally {
+          setIsLoadingLists(false);
+      }
     }, [isSignedIn, apiClient]); 
   
     const fetchTasks = useCallback(async (listIdToFetch: string | null) => { 
@@ -321,7 +321,6 @@ export default function TodoApp() {
                             >
                                 <span className="flex-1">All Tasks</span>
                             </button>
-                            {/* Optional: Add "Tasks without list" filter */}
                             <button
                                 className={cn(
                                     "w-full text-left p-2 rounded-md transition-colors duration-150 ease-in-out text-gray-700 flex items-center group",
@@ -366,18 +365,26 @@ export default function TodoApp() {
                           <div className="flex items-center justify-center h-64 text-gray-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading tasks...</div>
                       )}
 
-                      {!isLoadingTasks && tasks.length > 0 && ( // Only show grid if tasks exist
+                      {!isLoadingTasks && tasks.length > 0 && ( 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               {/* To Do Column */}
                               <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("To Do"))}>
-                                  {/* === ADDED HEADER === */}
+                                  
                                   <h3 className="text-lg font-semibold text-amber-800 mb-4 flex items-center justify-between">
-                                      <span>To Do</span>
+                                    <div className="flex items-center gap-2"> 
+                                          <span>To Do</span>
+                                          <Image
+                                              alt="To do section kitty icon" 
+                                              src="/kitty-yellow.png"       
+                                              width={35}                  
+                                              height={35}
+                                              className="inline-block"  
+                                          />
+                                      </div>
                                       <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white/50">
                                           {tasks.filter(t => t.status === "To Do").length}
                                       </Badge>
                                   </h3>
-                                  {/* === END HEADER === */}
                                   <div className="space-y-4">
                                       {tasks.filter(t => t.status === "To Do").map(task =>
                                           <TaskCard
@@ -396,10 +403,18 @@ export default function TodoApp() {
 
                               {/* In Progress Column */}
                               <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("In Progress"))}>
-                                  {/* === ADDED HEADER === */}
+                                  
                                     <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center justify-between">
-                                      <span>In Progress</span>
-                                        {/* Optional: Count Badge */}
+                                      <div className="flex items-center gap-2"> 
+                                          <span>In Progress</span>
+                                          <Image
+                                              alt="In progress section kitty icon" 
+                                              src="/kitty-blue.png"       
+                                              width={35}                  
+                                              height={35}
+                                              className="inline-block"    
+                                          />
+                                      </div>
                                       <Badge variant="outline" className="border-blue-300 text-blue-800 bg-white/50">
                                           {tasks.filter(t => t.status === "In Progress").length}
                                       </Badge>
@@ -423,9 +438,17 @@ export default function TodoApp() {
 
                               {/* Done Column */}
                               <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("Done"))}>
-                                    {/* === ADDED HEADER === */}
-                                  <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center justify-between">
-                                      <span>Done</span>
+                                    <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center justify-between">
+                                      <div className="flex items-center gap-2"> 
+                                          <span>Done</span>
+                                          <Image
+                                              alt="Done section kitty icon" 
+                                              src="/kitty-green.png"       
+                                              width={35}                  
+                                              height={35}
+                                              className="inline-block"     
+                                          />
+                                      </div>
                                         {/* Optional: Count Badge */}
                                       <Badge variant="outline" className="border-green-300 text-green-800 bg-white/50">
                                           {tasks.filter(t => t.status === "Done").length}
