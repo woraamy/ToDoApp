@@ -14,7 +14,7 @@ This guide provides instructions on how to set up and run this project locally.
 
 ## 1. Backend Setup
 
-These steps are necessary for running backtend.
+These steps are necessary for running backend service.
 
 1.  **Navigate to backend directory:**
     ```bash
@@ -39,9 +39,9 @@ These steps are necessary for running backtend.
 
 ## 2. Frontend Setup
 
-These steps are necessary for running backtend.
+These steps are necessary for running frontend service.
 
-1.  **Navigate to backend directory:**
+1.  **Navigate to frontend directory:**
     ```bash
     cd frontend/to-do-app
     ```
