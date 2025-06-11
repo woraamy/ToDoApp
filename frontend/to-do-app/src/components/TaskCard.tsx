@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Pencil, Trash2, ChevronDown } from "lucide-react"
+import { Pencil, Trash2, ChevronDown, GripVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { useDraggable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 
 // Types - Should match the type definition used in TodoApp where TaskCard is called
 type Status = "To Do" | "In Progress" | "Done";
@@ -51,10 +53,40 @@ export default function TaskCard({
     formatDate: (date: Date) => string;
     getStatusBadgeColor: (status: Status) => string;
   }) {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      isDragging,
+    } = useDraggable({
+      id: task._id,
+      data: {
+        type: 'task',
+        task,
+      },
+    })
+
+    const style = {
+      transform: CSS.Translate.toString(transform),
+    }
+
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4 relative transition-shadow hover:shadow-md">
+      <div 
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "bg-white rounded-lg shadow-sm p-4 relative transition-all duration-200 cursor-grab active:cursor-grabbing",
+          isDragging ? "opacity-50 shadow-lg scale-105 z-50" : "hover:shadow-md"
+        )}
+        {...attributes}
+        {...listeners}
+      >
         <div className="flex justify-between items-start mb-2"> {/* Added margin-bottom */}
-          <h4 className="font-semibold text-md text-gray-800">{task.topic}</h4> {/* Adjusted size/color */}
+          <div className="flex items-center gap-2">
+            <GripVertical className="h-4 w-4 text-gray-400" />
+            <h4 className="font-semibold text-md text-gray-800">{task.topic}</h4> {/* Adjusted size/color */}
+          </div>
            {/* Status Dropdown */}
            {/* Consider moving status change to the Edit dialog for consistency? Or keep dropdown */}
            <DropdownMenu>

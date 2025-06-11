@@ -14,7 +14,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import TaskCard from "@/components/TaskCard";
+import DroppableColumn from "@/components/DroppableColumn";
 import { type Status, type List, type Task } from "@/types";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from '@dnd-kit/core';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5050/api";
 
@@ -39,6 +41,9 @@ export default function TodoApp() {
   // Form states
   const [newTask, setNewTask] = useState({ topic: "", description: "", listId: "" })
   const [newList, setNewList] = useState({ name: "" })
+
+  // Drag and drop states
+  const [activeTask, setActiveTask] = useState<Task | null>(null)
 
   const apiClient = useMemo(() => {
     const client = axios.create({ baseURL: API_BASE_URL });
@@ -227,6 +232,29 @@ export default function TodoApp() {
     }
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const task = tasks.find(t => t._id === active.id);
+    if (task) {
+      setActiveTask(task);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTask(null);
+
+    if (!over) return;
+
+    const taskId = active.id as string;
+    const newStatus = over.id as Status;
+    
+    const task = tasks.find(t => t._id === taskId);
+    if (!task || task.status === newStatus) return;
+
+    handleChangeStatus(taskId, newStatus);
+  };
+
 
   const formatDate = (date: Date): string => {
     if (!date) return "Invalid Date"; 
@@ -365,112 +393,89 @@ export default function TodoApp() {
                           <div className="flex items-center justify-center h-64 text-gray-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading tasks...</div>
                       )}
 
-                      {!isLoadingTasks && tasks.length > 0 && ( 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {!isLoadingTasks && tasks.length > 0 && (
+                          <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               {/* To Do Column */}
-                              <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("To Do"))}>
-                                  
-                                  <h3 className="text-lg font-semibold text-amber-800 mb-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-2"> 
-                                          <span>To Do</span>
-                                          <Image
-                                              alt="To do section kitty icon" 
-                                              src="/kitty-yellow.png"       
-                                              width={35}                  
-                                              height={35}
-                                              className="inline-block"  
-                                          />
-                                      </div>
-                                      <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white/50">
-                                          {tasks.filter(t => t.status === "To Do").length}
-                                      </Badge>
-                                  </h3>
-                                  <div className="space-y-4">
-                                      {tasks.filter(t => t.status === "To Do").map(task =>
-                                          <TaskCard
-                                              key={task._id}
-                                              task={task}
-                                              onDelete={handleDeleteTask}
-                                              onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
-                                              onChangeStatus={handleChangeStatus}
-                                              formatDate={formatDate}
-                                              getStatusBadgeColor={getStatusBadgeColor}
-                                          />
-                                      )}
-                                      {tasks.filter(t => t.status === "To Do").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
-                                  </div>
-                              </div>
+                              <DroppableColumn
+                                id="To Do"
+                                title="To Do"
+                                icon="/kitty-yellow.png"
+                                color={getStatusColumnColor("To Do")}
+                                badgeColor="border-amber-300 text-amber-800 bg-white/50"
+                                count={tasks.filter(t => t.status === "To Do").length}
+                              >
+                                {tasks.filter(t => t.status === "To Do").map(task =>
+                                  <TaskCard
+                                    key={task._id}
+                                    task={task}
+                                    onDelete={handleDeleteTask}
+                                    onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                    onChangeStatus={handleChangeStatus}
+                                    formatDate={formatDate}
+                                    getStatusBadgeColor={getStatusBadgeColor}
+                                  />
+                                )}
+                              </DroppableColumn>
 
                               {/* In Progress Column */}
-                              <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("In Progress"))}>
-                                  
-                                    <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center justify-between">
-                                      <div className="flex items-center gap-2"> 
-                                          <span>In Progress</span>
-                                          <Image
-                                              alt="In progress section kitty icon" 
-                                              src="/kitty-blue.png"       
-                                              width={35}                  
-                                              height={35}
-                                              className="inline-block"    
-                                          />
-                                      </div>
-                                      <Badge variant="outline" className="border-blue-300 text-blue-800 bg-white/50">
-                                          {tasks.filter(t => t.status === "In Progress").length}
-                                      </Badge>
-                                  </h3>
-                                  {/* === END HEADER === */}
-                                  <div className="space-y-4">
-                                      {tasks.filter(t => t.status === "In Progress").map(task =>
-                                          <TaskCard
-                                              key={task._id}
-                                              task={task}
-                                              onDelete={handleDeleteTask}
-                                              onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
-                                              onChangeStatus={handleChangeStatus}
-                                              formatDate={formatDate}
-                                              getStatusBadgeColor={getStatusBadgeColor}
-                                          />
-                                      )}
-                                      {tasks.filter(t => t.status === "In Progress").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
-                                  </div>
-                              </div>
+                              <DroppableColumn
+                                id="In Progress"
+                                title="In Progress"
+                                icon="/kitty-blue.png"
+                                color={getStatusColumnColor("In Progress")}
+                                badgeColor="border-blue-300 text-blue-800 bg-white/50"
+                                count={tasks.filter(t => t.status === "In Progress").length}
+                              >
+                                {tasks.filter(t => t.status === "In Progress").map(task =>
+                                  <TaskCard
+                                    key={task._id}
+                                    task={task}
+                                    onDelete={handleDeleteTask}
+                                    onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                    onChangeStatus={handleChangeStatus}
+                                    formatDate={formatDate}
+                                    getStatusBadgeColor={getStatusBadgeColor}
+                                  />
+                                )}
+                              </DroppableColumn>
 
                               {/* Done Column */}
-                              <div className={cn("rounded-lg p-4 border min-h-[200px]", getStatusColumnColor("Done"))}>
-                                    <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center justify-between">
-                                      <div className="flex items-center gap-2"> 
-                                          <span>Done</span>
-                                          <Image
-                                              alt="Done section kitty icon" 
-                                              src="/kitty-green.png"       
-                                              width={35}                  
-                                              height={35}
-                                              className="inline-block"     
-                                          />
-                                      </div>
-                                        {/* Optional: Count Badge */}
-                                      <Badge variant="outline" className="border-green-300 text-green-800 bg-white/50">
-                                          {tasks.filter(t => t.status === "Done").length}
-                                      </Badge>
-                                  </h3>
-                                    {/* === END HEADER === */}
-                                  <div className="space-y-4">
-                                      {tasks.filter(t => t.status === "Done").map(task =>
-                                          <TaskCard
-                                              key={task._id}
-                                              task={task}
-                                              onDelete={handleDeleteTask}
-                                              onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
-                                              onChangeStatus={handleChangeStatus}
-                                              formatDate={formatDate}
-                                              getStatusBadgeColor={getStatusBadgeColor}
-                                          />
-                                      )}
-                                      {tasks.filter(t => t.status === "Done").length === 0 && <p className="text-sm text-center text-gray-500 pt-4">No tasks here!</p>}
-                                  </div>
-                              </div>
-                          </div>
+                              <DroppableColumn
+                                id="Done"
+                                title="Done"
+                                icon="/kitty-green.png"
+                                color={getStatusColumnColor("Done")}
+                                badgeColor="border-green-300 text-green-800 bg-white/50"
+                                count={tasks.filter(t => t.status === "Done").length}
+                              >
+                                {tasks.filter(t => t.status === "Done").map(task =>
+                                  <TaskCard
+                                    key={task._id}
+                                    task={task}
+                                    onDelete={handleDeleteTask}
+                                    onEdit={() => { setCurrentTask(task); setIsEditTaskOpen(true); setError(null);}}
+                                    onChangeStatus={handleChangeStatus}
+                                    formatDate={formatDate}
+                                    getStatusBadgeColor={getStatusBadgeColor}
+                                  />
+                                )}
+                              </DroppableColumn>
+                            </div>
+
+                            <DragOverlay>
+                              {activeTask ? (
+                                <TaskCard
+                                  task={activeTask}
+                                  onDelete={() => {}}
+                                  onEdit={() => {}}
+                                  onChangeStatus={() => {}}
+                                  formatDate={formatDate}
+                                  getStatusBadgeColor={getStatusBadgeColor}
+                                />
+                              ) : null}
+                            </DragOverlay>
+                          </DndContext>
                       )}
 
                       {/* Message for when there are NO tasks at all */}
